@@ -5,6 +5,8 @@
 """
 from __future__ import with_statement
 
+import os
+import os.path
 import optparse
 import sys
 import tokenize
@@ -310,7 +312,42 @@ def _read(filename):
                 return f.read()
         with open(filename, 'r', encoding=encoding) as f:
             return f.read()
+        
+def run_on_file(path, options):
+    """Run the mccabe checker on a file"""
+    
 
+    code = _read(path)
+    tree = compile(code, path , "exec", ast.PyCF_ONLY_AST)
+    visitor = PathGraphingAstVisitor()
+    visitor.preorder(tree, visitor)
+
+    if options.dot:
+        if not options.threshold or any(graph.complexity() > options.threshold for graph in visitor.graphs.values()):
+            print("File: {}".format(path))
+            
+            print('graph {')
+            for graph in visitor.graphs.values():
+                if (not options.threshold or
+                        graph.complexity() >= options.threshold):
+                    graph.to_dot()
+            print('}')
+    else:
+        if any(graph.complexity() > options.threshold for graph in visitor.graphs.values()):
+            print("File: {}".format(path))
+
+            for graph in visitor.graphs.values():
+                if graph.complexity() >= options.threshold:
+                    print(graph.name, graph.complexity())
+
+def run_on_directory(path, options, recursive=True):
+    """Run the mccabe checker on a directory"""
+    for file in os.listdir(path):
+        abs_path = path + "/" + file
+        if os.path.isdir(abs_path) and recursive:
+            run_on_directory(abs_path, options, recursive=True)
+        elif abs_path.endswith(".py"):
+            run_on_file(abs_path, options)
 
 def main(argv=None):
     if argv is None:
@@ -327,22 +364,8 @@ def main(argv=None):
         opar.print_help()
         opar.exit()
 
-    code = _read(args[0])
-    tree = compile(code, args[0], "exec", ast.PyCF_ONLY_AST)
-    visitor = PathGraphingAstVisitor()
-    visitor.preorder(tree, visitor)
-
-    if options.dot:
-        print('graph {')
-        for graph in visitor.graphs.values():
-            if (not options.threshold or
-                    graph.complexity() >= options.threshold):
-                graph.to_dot()
-        print('}')
-    else:
-        for graph in visitor.graphs.values():
-            if graph.complexity() >= options.threshold:
-                print(graph.name, graph.complexity())
+    path = args[0]
+    run_on_directory(path, options)
 
 
 if __name__ == '__main__':
